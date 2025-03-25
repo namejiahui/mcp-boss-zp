@@ -1,15 +1,15 @@
 {
   "name": "mcp-boss-zp",
-  "version": "0.0.1",
+  "version": "0.0.4",
   "type": "module",
   "bin": {
-    "mcp-boss-zp": "dist/src/main.js"
+    "mcp-boss-zp": "dist/main.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/src/*.js"
+    "build": "tsc && shx chmod +x dist/*.js"
   },
   "keywords": [
     "mcp",

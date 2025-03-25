@@ -10,11 +10,9 @@
         "sourceMap": false,
         "target": "ESNext",
         "allowJs": true,
-        "resolveJsonModule": true,
     },
     "include": [
         "src/**/*.ts",
-        "package.json"
     ],
     "exclude": [
         "node_modules"

@@ -1,7 +1,7 @@
-
 import * as fs from 'fs';
 import * as path from 'path';
 
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
