@@ -20,10 +20,7 @@
       "env": {
         "Cookie": "输入boss发送请求时所需要携带的cookie"
       },
-      "disabled": false,
-      "autoApprove": [
-        "add"
-      ]
+      "disabled": false
     }
   }
 }
