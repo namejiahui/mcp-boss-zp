@@ -9,7 +9,24 @@
 ### 如何使用
 
 ```
-
+{
+  "mcpServers": {
+    "mcp-boss-zp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-boss-zp"
+      ],
+      "env": {
+        "Cookie": "输入boss发送请求时所需要携带的cookie"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "add"
+      ]
+    }
+  }
+}
 ```
 
 ### 待办事项
