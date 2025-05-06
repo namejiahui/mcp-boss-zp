@@ -6,11 +6,8 @@ const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { jobList, type JobListParams } from "./api/index.js";
+import { greetBoss, GreetBossParams } from './api/greetBoss.js';
 
-if (!process.env.Cookie) {
-    console.error("请通过环境在环境变量中设置cookie");
-    process.exit(1);
-}
 
 const server = new McpServer({
     name: "mcp-boss-zp",
@@ -18,14 +15,38 @@ const server = new McpServer({
 });
 
 server.resource(
-    "greeting",
-    new ResourceTemplate("greeting://{name}", { list: undefined }),
-    async (uri, { name }) => ({
-        contents: [{
-            uri: uri.href,
-            text: `Hello, ${name}!`
-        }]
-    })
+    "boss-zp-greeting",
+    new ResourceTemplate(
+        "boss-zp://greeting/{securityId}/{jobId}",
+        { list: undefined }
+    ),
+    async (
+        uri: URL,
+        { securityId, jobId }
+    ) => {
+        try {
+            const params: GreetBossParams = {
+                securityId: Array.isArray(securityId) ? securityId[0] : securityId,
+                jobId: Array.isArray(jobId) ? jobId[0] : jobId,
+            }
+            const data = await greetBoss(params);
+            return {
+                contents: [{
+                    uri: uri.href,
+                    text: JSON.stringify(data),
+                    mimeType: "application/json"
+                }]
+            };
+        } catch (error) {
+            return {
+                contents: [{
+                    uri: uri.href,
+                    text: JSON.stringify((error as Error).message),
+                    mimeType: "application/json"
+                }]
+            };
+        }
+    }
 );
 
 server.resource(

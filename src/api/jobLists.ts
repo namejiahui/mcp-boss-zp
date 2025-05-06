@@ -1,4 +1,4 @@
-import { apiFetch } from "./fetch.js"
+import { apiFetch, Response } from "./fetch.js"
 
 //todo 添加公司规模参数，学历
 export type JobListParams = {
@@ -11,11 +11,6 @@ export type JobListParams = {
     _?: number
 }
 
-interface Root {
-    code: number
-    message: string
-    zpData: ZpData
-}
 
 interface ZpData {
     hasMore: boolean
@@ -79,7 +74,7 @@ interface Gps {
     latitude: number
 }
 
-export const jobList = (params: JobListParams) => apiFetch<Root>('/wapi/zpgeek/pc/recommend/job/list.json', {
+export const jobList = (params: JobListParams) => apiFetch<Response<ZpData>>('/wapi/zpgeek/pc/recommend/job/list.json', {
     params
 }).then(({ zpData, code, message }) => {
     if (code !== 0) {
