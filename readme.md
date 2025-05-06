@@ -25,7 +25,15 @@
   }
 }
 ```
+2. 一次获取工作列表的对话示例
+   
+![image](https://github.com/user-attachments/assets/d0c2f09d-b63e-42f0-81b4-5b2aaa7fef90)
 
+![image](https://github.com/user-attachments/assets/6c19813c-156c-4542-a2d4-065662949284)
+
+![image](https://github.com/user-attachments/assets/2dab91dc-a516-489b-a060-68362c30e93e)
+
+中间因为更新后没有重启，所以有一些无效的对话，被我略去了，但是不影响结果
 
 ### 待办事项
 
@@ -33,3 +41,4 @@
 - [x] 提供打招呼的资源
 - [ ] 提供获取消息信息的资源
 - [ ] docker 构建方式
+- [ ] deubg配置
