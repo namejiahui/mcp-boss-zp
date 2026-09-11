@@ -1,6 +1,9 @@
 node_modules/
 dist/
 build/
+bin/
+.mcp-boss-zp/
+browser_profile/
 .cache/
 .npm/
 .npmrc
@@ -16,6 +19,7 @@ Thumbs.db
 
 *.tsbuildinfo
 *.d.ts
+!internal/boss/scripts/types.d.ts
 *.d.ts.map
 
 .vite/
