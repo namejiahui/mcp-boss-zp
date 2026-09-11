@@ -1,0 +1,23 @@
+{
+  "name": "mcp-boss-zp-win32-x64",
+  "version": "0.3.0",
+  "description": "Windows x64 binary for mcp-boss-zp",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "bin": {
+    "mcp-boss-zp": "bin/mcp-boss-zp.exe"
+  },
+  "files": [
+    "bin/mcp-boss-zp.exe"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namejiahui/mcp-boss-zp"
+  }
+}
+

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/namejiahui/mcp-boss-zp/internal/boss"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/namejiahui/mcp-boss-zp/internal/boss"
 )
 
 type Server struct {

@@ -1,0 +1,23 @@
+{
+  "name": "mcp-boss-zp-linux-arm64",
+  "version": "0.3.0",
+  "description": "Linux ARM64 binary for mcp-boss-zp",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "bin": {
+    "mcp-boss-zp": "bin/mcp-boss-zp"
+  },
+  "files": [
+    "bin/mcp-boss-zp"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namejiahui/mcp-boss-zp"
+  }
+}
+

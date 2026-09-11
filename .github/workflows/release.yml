@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Publish Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy GoReleaser Artifacts to NPM Subpackages
+        run: |
+          mkdir -p npm/darwin-arm64/bin && cp dist/mcp-boss-zp-darwin-arm64 npm/darwin-arm64/bin/mcp-boss-zp
+          mkdir -p npm/darwin-x64/bin   && cp dist/mcp-boss-zp-darwin-amd64 npm/darwin-x64/bin/mcp-boss-zp
+          mkdir -p npm/linux-x64/bin    && cp dist/mcp-boss-zp-linux-amd64  npm/linux-x64/bin/mcp-boss-zp
+          mkdir -p npm/linux-arm64/bin  && cp dist/mcp-boss-zp-linux-arm64  npm/linux-arm64/bin/mcp-boss-zp
+          mkdir -p npm/win32-x64/bin    && cp dist/mcp-boss-zp-windows-amd64.exe npm/win32-x64/bin/mcp-boss-zp.exe
+          chmod +x npm/*/bin/*
+
+      - name: Publish to NPM
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish ./npm/darwin-arm64 --access public --provenance
+          npm publish ./npm/darwin-x64   --access public --provenance
+          npm publish ./npm/linux-x64    --access public --provenance
+          npm publish ./npm/linux-arm64  --access public --provenance
+          npm publish ./npm/win32-x64    --access public --provenance
+          npm publish .                  --access public --provenance
+

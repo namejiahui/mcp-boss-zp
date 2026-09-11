@@ -1,0 +1,33 @@
+{
+  "name": "mcp-boss-zp",
+  "version": "0.3.0",
+  "description": "BOSS 直聘大模型辅助 MCP 服务 (所见即所得，真实页面渲染与点击交互)",
+  "type": "module",
+  "bin": {
+    "mcp-boss-zp": "./cli.js"
+  },
+  "files": [
+    "cli.js",
+    "readme.md"
+  ],
+  "optionalDependencies": {
+    "mcp-boss-zp-darwin-arm64": "0.3.0",
+    "mcp-boss-zp-darwin-x64": "0.3.0",
+    "mcp-boss-zp-linux-x64": "0.3.0",
+    "mcp-boss-zp-linux-arm64": "0.3.0",
+    "mcp-boss-zp-win32-x64": "0.3.0"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "boss-zp",
+    "boss直聘",
+    "model-context-protocol"
+  ],
+  "author": "bril",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namejiahui/mcp-boss-zp"
+  }
+}

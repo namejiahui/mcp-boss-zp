@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/namejiahui/mcp-boss-zp/internal/browser"
 	"github.com/go-rod/rod"
+	"github.com/namejiahui/mcp-boss-zp/internal/browser"
 )
 
 var (

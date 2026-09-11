@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 bin/
+npm/*/bin/
 .mcp-boss-zp/
 browser_profile/
 .cache/

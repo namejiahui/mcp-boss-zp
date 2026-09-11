@@ -9,11 +9,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/namejiahui/mcp-boss-zp/internal/boss"
 	"github.com/namejiahui/mcp-boss-zp/internal/browser"
 	"github.com/namejiahui/mcp-boss-zp/internal/config"
 	mcpServer "github.com/namejiahui/mcp-boss-zp/internal/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 var (
