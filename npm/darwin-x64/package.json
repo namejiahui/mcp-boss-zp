@@ -17,7 +17,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/namejiahui/mcp-boss-zp"
+    "url": "git+https://github.com/namejiahui/mcp-boss-zp.git"
   }
 }
-

@@ -4,7 +4,7 @@
   "description": "BOSS 直聘大模型辅助 MCP 服务 (所见即所得，真实页面渲染与点击交互)",
   "type": "module",
   "bin": {
-    "mcp-boss-zp": "./cli.js"
+    "mcp-boss-zp": "cli.js"
   },
   "files": [
     "cli.js",
@@ -28,6 +28,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/namejiahui/mcp-boss-zp"
+    "url": "git+https://github.com/namejiahui/mcp-boss-zp.git"
   }
 }
