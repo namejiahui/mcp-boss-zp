@@ -127,3 +127,32 @@ func (s *BossService) GetVisibleJobs(ctx context.Context) ([]VisibleJob, error) 
 
 	return jobs, nil
 }
+
+// GreetJob 点击指定卡片的立即沟通按钮
+func (s *BossService) GreetJob(ctx context.Context, cardIndex int) (*GreetResult, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	if cardIndex <= 0 {
+		return nil, fmt.Errorf("卡片序号必须从 1 开始")
+	}
+
+	rawJSON, err := s.executeInPage(bossScript, "greet", cardIndex)
+	if err != nil {
+		return nil, fmt.Errorf("执行打招呼点击失败: %w", err)
+	}
+
+	var res GreetResult
+	if err := json.Unmarshal([]byte(rawJSON), &res); err != nil {
+		return nil, fmt.Errorf("解析打招呼结果失败: %w", err)
+	}
+
+	if !res.Success {
+		return nil, fmt.Errorf("%s", res.Message)
+	}
+
+	return &res, nil
+}

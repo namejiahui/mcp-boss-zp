@@ -1,5 +1,5 @@
 /**
- * BOSS 直聘可见职位类型声明
+ * BOSS 直聘可见职位与操作结果类型声明
  */
 
 export interface VisibleJob {
@@ -20,3 +20,11 @@ export interface VisibleJob {
     /** 是否此前已经发送过沟通邀请 (按钮文案为继续沟通) */
     alreadyChatted: boolean;
 }
+
+export interface GreetResult {
+    /** 是否成功执行了点击沟通 */
+    success: boolean;
+    /** 结果说明提示信息 */
+    message: string;
+}
+

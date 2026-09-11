@@ -14,3 +14,9 @@ type VisibleJob struct {
 	BossInfo       string   `json:"bossInfo"`       // 发布者/HR 信息 (如：张女士 · 招聘专家)
 	AlreadyChatted bool     `json:"alreadyChatted"` // 是否已经沟通 (按钮是否为继续沟通)
 }
+
+// GreetResult 打招呼动作执行结果
+type GreetResult struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
