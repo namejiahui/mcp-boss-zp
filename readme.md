@@ -79,6 +79,9 @@ just build
 # 本地直接运行开发模式
 just run
 
+# 代码静态检查 (staticcheck & go vet)
+just lint
+
 # 清理构建产物与下载缓存
 just clean
 ```

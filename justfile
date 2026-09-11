@@ -17,6 +17,11 @@ build:
 run *args:
     go run -buildvcs=false ./cmd/mcp-boss-zp {{args}}
 
+# 代码静态检查 (staticcheck & go vet)
+lint:
+    go tool staticcheck ./...
+    go vet ./...
+
 # 清理本地构建产物及临时浏览器缓存
 clean:
     rm -rf {{build_dir}}
