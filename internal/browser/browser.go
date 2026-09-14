@@ -9,8 +9,14 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/go-rod/stealth"
 	"github.com/namejiahui/mcp-boss-zp/internal/config"
+)
+
+const (
+	defaultWindowWidth  = 1440
+	defaultWindowHeight = 900
 )
 
 // BrowserManager 管理底层 Chrome/Edge 浏览器进程及连接
@@ -53,6 +59,7 @@ func (bm *BrowserManager) EnsureBrowser() (*rod.Browser, error) {
 		UserDataDir(bm.cfg.UserDataDir).
 		Headless(bm.cfg.Headless).
 		Leakless(false).
+		Set("window-size", fmt.Sprintf("%d,%d", defaultWindowWidth, defaultWindowHeight)).
 		Set("disable-blink-features", "AutomationControlled").
 		Set("no-default-browser-check").
 		Set("no-first-run")
@@ -91,6 +98,13 @@ func (bm *BrowserManager) NewStealthPage() (*rod.Page, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建 stealth 页面失败: %w", err)
 	}
+
+	// 锁定页面视口为标准 1440x900 宽屏，确保无论在何种操作系统或分辨率下，页面 DOM 布局均完全一致且不折叠
+	_ = p.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
+		Width:             defaultWindowWidth,
+		Height:            defaultWindowHeight,
+		DeviceScaleFactor: 1,
+	})
 
 	return p, nil
 }
