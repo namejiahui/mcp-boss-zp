@@ -3,6 +3,7 @@ package boss
 // VisibleJob 代表当前页面上渲染出来的可见职位卡片
 type VisibleJob struct {
 	Index          int      `json:"index"`          // 页面上的卡片序号 (1, 2, 3...)
+	JobID          string   `json:"jobId"`          // 职位唯一ID (从 /job_detail/xxx.html 提取)
 	JobName        string   `json:"jobName"`        // 职位名称 (如：Go 后端开发工程师)
 	Salary         string   `json:"salary"`         // 薪资范围 (如：20-35K·15薪)
 	CompanyName    string   `json:"companyName"`    // 公司名称

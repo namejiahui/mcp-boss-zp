@@ -1,9 +1,12 @@
 // @ts-check
 
 /**
- * BOSS 直聘页面操作统一分发器 (IIFE 模块模式)
+ * BOSS 直聘页面操作统一分发器
+ * @param {'getJobs' | 'getCardElement' | 'waitForChatButton'} action 操作指令名称
+ * @param {any[]} args 传递给具体操作的参数
+ * @returns {Promise<any>}
  */
-(() => {
+async (action, ...args) => {
     const CARD_SELECTORS = '.job-card-wrapper, .job-card-box, li.job-card-box, li.job-card-wrapper, .card-item';
     const CHAT_BTN_SELECTORS = '.op-btn-chat, .btn-startchat, [class*="startchat"], a.btn';
 
@@ -53,136 +56,132 @@
         });
     }
 
-    /**
-     * 原生 MutationObserver 事件驱动等待单个元素挂载
-     * @param {string} sel CSS 选择器
-     * @param {number} [timeout=2000] 超时毫秒数
-     * @returns {Promise<HTMLElement | null>}
-     */
-    async function waitForElement(sel, timeout = 2000) {
-        /** @returns {HTMLElement | null} */
-        const query = () => document.querySelector(sel);
-        const existing = query();
-        if (existing) return existing;
+    switch (action) {
+        case 'getJobs': {
+            const cards = await waitForAll(CARD_SELECTORS);
 
-        return new Promise(resolve => {
-            const timer = setTimeout(() => {
-                observer.disconnect();
-                resolve(query());
-            }, timeout);
+            /** @type {import('./types').VisibleJob[]} */
+            const result = [];
 
-            const observer = new MutationObserver(() => {
-                const el = query();
-                if (el) {
-                    clearTimeout(timer);
-                    observer.disconnect();
-                    resolve(el);
-                }
+            cards.forEach((card, idx) => {
+                const nameEl = card.querySelector('.job-name');
+                const salaryEl = card.querySelector('.job-salary, .salary');
+                if (!nameEl && !salaryEl) return;
+
+                const companyEl = card.querySelector('.boss-name, .company-name, .brand-name');
+                const bossEl = card.querySelector('.boss-info, .boss-title');
+                const btnEl = card.querySelector(CHAT_BTN_SELECTORS);
+
+                const tagEls = card.querySelectorAll('.tag-list li, .job-labels span');
+                const tags = Array.from(tagEls).map(el => (el.textContent || '').trim()).filter(Boolean);
+
+                const locEl = card.querySelector('.company-location');
+                const location = locEl ? (locEl.textContent || '').trim() : '';
+
+                const btnText = btnEl ? (btnEl.textContent || '').trim() : '';
+                const alreadyChatted = btnText.includes('继续') || btnText.includes('已沟通') || btnText.includes('聊过');
+
+                const rawSalary = salaryEl ? (salaryEl.textContent || '').trim() : '薪资面议';
+                const cleanSalary = decodeBossSalary(rawSalary);
+                const cleanJobName = nameEl ? (nameEl.textContent || '').trim() : '未知职位';
+                const cleanCompanyName = companyEl ? (companyEl.textContent || '').trim() : '未知公司';
+
+                const cardLink = card.querySelector('a[href*="/job_detail/"]');
+                const cardHref = cardLink ? cardLink.getAttribute('href') || '' : '';
+                const matchJobId = cardHref.match(/\/job_detail\/([a-zA-Z0-9~_-]+)\.html/);
+                const jobId = matchJobId ? matchJobId[1] : '';
+
+                result.push({
+                    index: idx + 1,
+                    jobId: jobId,
+                    jobName: cleanJobName,
+                    salary: cleanSalary,
+                    companyName: cleanCompanyName,
+                    companyScale: location,
+                    experience: tags.length > 0 ? tags[0] : '',
+                    degree: tags.length > 1 ? tags[1] : '',
+                    location: location,
+                    tags: tags,
+                    bossInfo: bossEl ? (bossEl.textContent || '').trim() : '',
+                    alreadyChatted: alreadyChatted
+                });
             });
-            observer.observe(document.body, { childList: true, subtree: true });
-        });
-    }
 
-    /**
-     * @param {'getJobs' | 'greet'} action 操作指令名称
-     * @param {any[]} args 传递给具体操作的参数
-     * @returns {Promise<string>} 序列化后的 JSON 字符串
-     */
-    return async (action, ...args) => {
-        switch (action) {
-            case 'getJobs': {
-                const cards = await waitForAll(CARD_SELECTORS);
+            return JSON.stringify(result);
+        }
 
-                /** @type {import('./types').VisibleJob[]} */
-                const result = [];
+        case 'getCardElement': {
+            const targetIndex = Number(args[0]);
+            if (!Number.isInteger(targetIndex) || targetIndex <= 0) {
+                throw new Error(`非法的职位卡片序号: ${args[0]}，卡片序号必须是从 1 开始的正整数`);
+            }
+            const cards = document.querySelectorAll(CARD_SELECTORS);
+            return cards[targetIndex - 1] || null;
+        }
 
-                cards.forEach((card, idx) => {
-                    const nameEl = card.querySelector('.job-name');
-                    const salaryEl = card.querySelector('.job-salary, .salary');
-                    if (!nameEl && !salaryEl) return;
+        case 'waitForChatButton': {
+            const targetJobId = String(args[0] || '').trim();
+            const timeout = Number(args[1]) || 8000;
 
-                    const companyEl = card.querySelector('.boss-name, .company-name, .brand-name');
-                    const bossEl = card.querySelector('.boss-info, .boss-title');
-                    const btnEl = card.querySelector(CHAT_BTN_SELECTORS);
+            /**
+             * 尝试从右侧详情区提取目标职位的沟通按钮
+             * @returns {HTMLElement | null}
+             */
+            const queryTargetChatBtn = () => {
+                const detailBox = document.querySelector('.job-detail-box');
+                if (!detailBox) return null;
 
-                    const tagEls = card.querySelectorAll('.tag-list li, .job-labels span');
-                    const tags = Array.from(tagEls).map(el => (el.textContent || '').trim()).filter(Boolean);
+                // 若还在 loading 骨架屏状态，说明网络请求未完成，继续等待
+                if (detailBox.querySelector('.job-detail-loading, .load_placeholder')) {
+                    return null;
+                }
 
-                    const locEl = card.querySelector('.company-location');
-                    const location = locEl ? (locEl.textContent || '').trim() : '';
+                // 异步渲染完成后，核对 targetJobId 确保对齐
+                if (targetJobId && !detailBox.querySelector(`[href*="${targetJobId}"]`)) {
+                    return null;
+                }
 
-                    const btnText = btnEl ? (btnEl.textContent || '').trim() : '';
-                    const alreadyChatted = btnText.includes('继续') || btnText.includes('已沟通') || btnText.includes('聊过');
+                // 从详情区查找唯一的【立即沟通】主按钮
+                const buttons = Array.from(detailBox.querySelectorAll('a, button'));
+                return buttons.find(el => {
+                    return (el.textContent || '').trim() === '立即沟通' &&
+                        el.offsetWidth > 0 &&
+                        el.offsetHeight > 0 &&
+                        el.isConnected;
+                }) || null;
+            };
 
-                    const rawSalary = salaryEl ? (salaryEl.textContent || '').trim() : '薪资面议';
-                    const cleanSalary = decodeBossSalary(rawSalary);
-                    const cleanJobName = nameEl ? (nameEl.textContent || '').trim() : '未知职位';
-                    const cleanCompanyName = companyEl ? (companyEl.textContent || '').trim() : '未知公司';
+            return new Promise(resolve => {
+                const immediate = queryTargetChatBtn();
+                if (immediate) {
+                    resolve(immediate);
+                    return;
+                }
 
-                    result.push({
-                        index: idx + 1,
-                        jobName: cleanJobName,
-                        salary: cleanSalary,
-                        companyName: cleanCompanyName,
-                        companyScale: location,
-                        experience: tags.length > 0 ? tags[0] : '',
-                        degree: tags.length > 1 ? tags[1] : '',
-                        location: location,
-                        tags: tags,
-                        bossInfo: bossEl ? (bossEl.textContent || '').trim() : '',
-                        alreadyChatted: alreadyChatted
-                    });
+                let timer;
+                const observer = new MutationObserver(() => {
+                    const btn = queryTargetChatBtn();
+                    if (btn) {
+                        clearTimeout(timer);
+                        observer.disconnect();
+                        resolve(btn);
+                    }
                 });
 
-                return JSON.stringify(result);
-            }
+                // 监听 .job-detail-container 或 .job-detail-box 的子树异步变动
+                const targetNode = document.querySelector('.job-detail-container, .job-detail-box') || document.body;
+                observer.observe(targetNode, { childList: true, subtree: true });
 
-            case 'greet': {
-                const targetIndex = Number(args[0]);
-                const cards = await waitForAll(CARD_SELECTORS);
-
-                if (cards.length === 0) {
-                    /** @type {import('./types').GreetResult} */
-                    const result = { success: false, message: '当前页面上未找到任何职位卡片，请先确认页面已加载完成' };
-                    return JSON.stringify(result);
-                }
-
-                const card = cards[targetIndex - 1];
-                if (!card) {
-                    /** @type {import('./types').GreetResult} */
-                    const result = { success: false, message: '未找到序号为 ' + targetIndex + ' 的职位卡片 (当前页面共有 ' + cards.length + ' 个卡片)' };
-                    return JSON.stringify(result);
-                }
-
-                card.click();
-
-                const btn = card.querySelector(CHAT_BTN_SELECTORS) ||
-                    await waitForElement('.op-btn-chat, .btn-startchat, .job-op .btn', 2000);
-
-                if (!btn) {
-                    /** @type {import('./types').GreetResult} */
-                    const result = { success: false, message: '在序号 ' + targetIndex + ' 的职位上未找到沟通按钮' };
-                    return JSON.stringify(result);
-                }
-
-                const btnText = (btn.textContent || '').trim();
-                if (btnText.includes('继续') || btnText.includes('已沟通') || btnText.includes('聊过')) {
-                    /** @type {import('./types').GreetResult} */
-                    const result = { success: true, message: '该职位此前已发送过沟通邀请，无需重复打招呼' };
-                    return JSON.stringify(result);
-                }
-
-                btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                btn.click();
-
-                /** @type {import('./types').GreetResult} */
-                const result = { success: true, message: '已在页面上成功点击【立即沟通】按钮！' };
-                return JSON.stringify(result);
-            }
-
-            default:
-                throw new Error(`未知的操作指令: ${action}`);
+                timer = setTimeout(() => {
+                    observer.disconnect();
+                    // 超时兜底获取详情区内存在的沟通按钮
+                    resolve(queryTargetChatBtn());
+                }, timeout);
+            });
         }
-    };
-})()
+
+        default:
+            throw new Error(`未知的操作指令: ${action}`);
+    }
+}
 
