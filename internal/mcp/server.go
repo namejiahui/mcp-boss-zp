@@ -20,6 +20,7 @@ func NewServer(bossService *boss.BossService, version string) *Server {
 		"mcp-boss-zp",
 		version,
 		server.WithDescription("BOSS 直聘大模型辅助工具（所见即所得：直接读取当前浏览器屏幕岗位，真实点击打招呼）"),
+		server.WithToolCapabilities(false),
 	)
 
 	srv := &Server{

@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/go-rod/rod v0.116.2
 	github.com/go-rod/stealth v0.4.9
-	github.com/mark3labs/mcp-go v1.0.0
+	github.com/mark3labs/mcp-go v1.5.0
 )
 
 require (
