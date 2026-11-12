@@ -39,6 +39,28 @@ func (s *Server) GetMCPServer() *server.MCPServer {
 }
 
 func (s *Server) registerTools() {
+	checkLoginTool := mcp.NewTool("check_login_status",
+		mcp.WithDescription("检查当前 BOSS 直聘的登录状态。返回是否已登录以及当前状态说明"),
+	)
+
+	s.mcpServer.AddTool(checkLoginTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		loggedIn, msg, err := s.bossService.CheckLoginStatus(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("检查登录状态失败: %v", err)), nil
+		}
+
+		res := map[string]any{
+			"logged_in": loggedIn,
+			"message":   msg,
+		}
+		bytes, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("格式化结果失败: %v", err)), nil
+		}
+
+		return mcp.NewToolResultText(string(bytes)), nil
+	})
+
 	getJobsTool := mcp.NewTool("get_current_jobs",
 		mcp.WithDescription("读取当前 BOSS 直聘浏览器窗口中正在展示的真实职位列表。所见即所得，包含每个职位的序号、名称、薪资、公司、技能标签以及是否已沟通过"),
 	)

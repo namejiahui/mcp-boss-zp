@@ -24,7 +24,7 @@ var (
 )
 
 const (
-	bossJobURL = "https://www.zhipin.com/web/geek/job"
+	bossJobURL = "https://www.zhipin.com/web/geek/jobs"
 )
 
 type BossService struct {
@@ -37,11 +37,20 @@ func NewBossService(bm *browser.BrowserManager) *BossService {
 	return &BossService{bm: bm}
 }
 
-// ensurePageValid 确保 BOSS 直聘页面有效且处于可用状态
-func (s *BossService) ensurePageValid() (*rod.Page, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// isLoggedIn 检查指定页面是否处于已登录状态（若 URL 包含 /web/user 则视为未登录）
+func isLoggedIn(p *rod.Page) (bool, error) {
+	info, err := p.Info()
+	if err != nil {
+		return false, err
+	}
+	if strings.Contains(info.URL, "/web/user") {
+		return false, nil
+	}
+	return true, nil
+}
 
+// getOrOpenPageLocked 获取或创建页面。若标签页已关闭或失联则重新打开并导航至推荐页
+func (s *BossService) getOrOpenPageLocked() (*rod.Page, error) {
 	if s.page != nil {
 		if _, err := s.page.Info(); err == nil {
 			return s.page, nil
@@ -55,45 +64,59 @@ func (s *BossService) ensurePageValid() (*rod.Page, error) {
 	}
 	s.page = p
 
+	wait := s.page.Timeout(10 * time.Second).WaitNavigation(proto.PageLifecycleEventNameNetworkAlmostIdle)
+
 	log.Printf("[BossService] 正在打开 BOSS 直聘推荐页: %s", bossJobURL)
 	if err := s.page.Navigate(bossJobURL); err != nil {
 		return nil, fmt.Errorf("页面导航失败: %w", err)
 	}
 
-	_ = s.page.WaitLoad()
+	wait()
+	return s.page, nil
+}
 
-	info, err := s.page.Info()
+// ensurePageValid 确保 BOSS 直聘处于有效登录状态，未登录时立即返回错误
+func (s *BossService) ensurePageValid() (*rod.Page, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, err := s.getOrOpenPageLocked()
+	if err != nil {
+		return nil, err
+	}
+
+	logged, err := isLoggedIn(p)
 	if err != nil {
 		return nil, fmt.Errorf("获取页面信息失败: %w", err)
 	}
 
-	if strings.Contains(info.URL, "/web/user") || strings.Contains(info.URL, "login") {
-		log.Println("==================================================================")
-		log.Println("【BOSS直聘 MCP】检测到您尚未登录或登录已失效！")
-		log.Println("【BOSS直聘 MCP】请在弹出的浏览器窗口中扫码登录 BOSS 直聘。")
-		log.Println("【BOSS直聘 MCP】登录成功后，系统将自动保持会话并就绪...")
-		log.Println("==================================================================")
-
-		timeout := time.After(3 * time.Minute)
-		ticker := time.NewTicker(1500 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-timeout:
-				return nil, fmt.Errorf("等待扫码登录超时 (3分钟)，请重启服务重新扫码")
-			case <-ticker.C:
-				currentInfo, err := s.page.Info()
-				if err == nil && !strings.Contains(currentInfo.URL, "/web/user") && !strings.Contains(currentInfo.URL, "login") {
-					log.Println("【BOSS直聘 MCP】检测到登录成功！会话已自动持久化。")
-					return s.page, nil
-				}
-			}
-		}
+	if !logged {
+		return nil, fmt.Errorf("尚未登录 BOSS 直聘，请先完成登录后重试")
 	}
 
-	log.Println("[BossService] BOSS 直聘已处于有效登录状态。")
-	return s.page, nil
+	return p, nil
+}
+
+// CheckLoginStatus 检查 BOSS 直聘当前登录状态
+func (s *BossService) CheckLoginStatus(ctx context.Context) (bool, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, err := s.getOrOpenPageLocked()
+	if err != nil {
+		return false, "", err
+	}
+
+	logged, err := isLoggedIn(p)
+	if err != nil {
+		return false, "", fmt.Errorf("获取页面信息失败: %w", err)
+	}
+
+	if !logged {
+		return false, "尚未登录 BOSS 直聘，当前处于登录界面", nil
+	}
+
+	return true, "已登录 BOSS 直聘，当前会话有效且就绪", nil
 }
 
 // executeInPage 在 BOSS 页面上下文中执行脚本并返回字符串
