@@ -15,9 +15,6 @@ type AppConfig struct {
 
 // GetDefaultUserDataDir 获取跨平台默认的数据持久化目录
 func GetDefaultUserDataDir() string {
-	if custom := os.Getenv("BOSS_USER_DATA_DIR"); custom != "" {
-		return custom
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."

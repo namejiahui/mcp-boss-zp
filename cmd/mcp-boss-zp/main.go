@@ -20,7 +20,6 @@ var (
 	Version   = "dev"
 	showVer   = flag.Bool("version", false, "显示版本号")
 	headless  = flag.Bool("headless", false, "是否以无头模式启动浏览器 (若未登录建议保持 false)")
-	customDir = flag.String("profile", "", "自定义 Chrome 用户数据目录")
 	chromeBin = flag.String("chrome-bin", "", "自定义 Chrome/Edge 浏览器可执行文件路径")
 )
 
@@ -41,9 +40,6 @@ func main() {
 	cfg := config.LoadConfig()
 	if *headless {
 		cfg.Headless = true
-	}
-	if *customDir != "" {
-		cfg.UserDataDir = *customDir
 	}
 	if *chromeBin != "" {
 		cfg.ChromeBin = *chromeBin

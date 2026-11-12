@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/go-rod/rod"
@@ -33,13 +32,6 @@ func NewBrowserManager(cfg *config.AppConfig) *BrowserManager {
 	}
 }
 
-// cleanStaleLocks 清理崩溃残留的 Chrome 锁文件
-func cleanStaleLocks(userDataDir string) {
-	for _, f := range []string{"SingletonLock", "SingletonSocket", "SingletonCookie"} {
-		_ = os.Remove(filepath.Join(userDataDir, f))
-	}
-}
-
 // EnsureBrowser 确保底层浏览器已启动并建立连接
 func (bm *BrowserManager) EnsureBrowser() (*rod.Browser, error) {
 	bm.mu.Lock()
@@ -52,8 +44,6 @@ func (bm *BrowserManager) EnsureBrowser() (*rod.Browser, error) {
 	if err := os.MkdirAll(bm.cfg.UserDataDir, 0755); err != nil {
 		return nil, fmt.Errorf("创建用户数据目录失败: %w", err)
 	}
-
-	cleanStaleLocks(bm.cfg.UserDataDir)
 
 	l := launcher.New().
 		UserDataDir(bm.cfg.UserDataDir).
