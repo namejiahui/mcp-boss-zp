@@ -41,6 +41,21 @@ func (bm *BrowserManager) EnsureBrowser() (*rod.Browser, error) {
 		return bm.browser, nil
 	}
 
+	if bm.cfg.CDPURL != "" {
+		log.Printf("[Browser] 正在通过 CDP 接入现有浏览器: %s", bm.cfg.CDPURL)
+		u, err := launcher.ResolveURL(bm.cfg.CDPURL)
+		if err != nil {
+			return nil, fmt.Errorf("解析 CDP 调试地址失败 (%s): %w", bm.cfg.CDPURL, err)
+		}
+		b := rod.New().ControlURL(u)
+		if err := b.Connect(); err != nil {
+			return nil, fmt.Errorf("连接现有 Chrome 失败 (%s): %w", bm.cfg.CDPURL, err)
+		}
+		bm.browser = b
+		log.Printf("[Browser] 成功连接至现有浏览器 (%s)", bm.cfg.CDPURL)
+		return bm.browser, nil
+	}
+
 	if err := os.MkdirAll(bm.cfg.UserDataDir, 0755); err != nil {
 		return nil, fmt.Errorf("创建用户数据目录失败: %w", err)
 	}
@@ -105,7 +120,11 @@ func (bm *BrowserManager) Close() error {
 	defer bm.mu.Unlock()
 
 	if bm.browser != nil {
-		err := bm.browser.Close()
+		var err error
+		// 若是通过外部 CDP 接入的浏览器，仅断开连接，避免误杀宿主机用户正在使用的浏览器
+		if bm.cfg.CDPURL == "" {
+			err = bm.browser.Close()
+		}
 		bm.browser = nil
 		return err
 	}
