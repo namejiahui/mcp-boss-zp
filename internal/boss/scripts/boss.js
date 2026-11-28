@@ -13,11 +13,15 @@ async (action, ...args) => {
     /**
      * BOSS 直聘用自定义 @font-face 混淆薪资数字：文本层是私有区（PUA）字符，
      * 渲染层由字体把 PUA 码点画成数字字形，且映射表会不定期轮换
-     * （静态假设 \ue030-\ue039 → 0-9 已实测整体偏移失效）。
+     * （静态假设 \ue030-\ue039 → 0-9 已实测整体偏移失效，故不再保留静态表）。
      * 因此改为运行时自校准：用 canvas 把 PUA 字符与参考数字 0-9 按同一字体
      * 渲染成位图，按像素 IoU 匹配出映射表，并在 window 上缓存供本页面复用。
+     * 校准失败时 PUA 字符原样返回，宁可暴露问题也不静默输出错误数字。
      */
-    const STATIC_DIGIT_BASE = 0xE030; // 校准失败时的静态兜底（旧行为，可能因字体轮换失效）
+    /** @type {HTMLCanvasElement | null} */
+    let glyphCanvas = null;
+    /** @type {CanvasRenderingContext2D | null} */
+    let glyphCtx = null;
 
     /**
      * 收集字符串中出现的全部 PUA（私有区）字符
@@ -38,11 +42,19 @@ async (action, ...args) => {
      * @returns {{ bits: Uint8Array } | null} 字体不含该字符时返回 null
      */
     function renderGlyphBitmap(char, font) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 96;
-        canvas.height = 96;
-        const ctx = canvas.getContext('2d');
+        // 校准循环里会逐字形调用，这里复用同一个离屏 canvas，
+        // 避免每次新建 DOM 节点与 96x96 后备缓冲区
+        if (!glyphCanvas) {
+            glyphCanvas = document.createElement('canvas');
+            glyphCanvas.width = 96;
+            glyphCanvas.height = 96;
+            glyphCtx = glyphCanvas.getContext('2d');
+        }
+        const canvas = glyphCanvas;
+        const ctx = glyphCtx;
         if (!ctx) return null;
+        // 必须清空：残影会进入下面的 bbox 统计，把裁剪边界算错
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.font = font;
         ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = '#000';
@@ -98,20 +110,38 @@ async (action, ...args) => {
     }
 
     /**
+     * 参考数字 0-9 位图的指纹（FNV-1a 变体）。
+     * 字形随字体轮换而变化，指纹也随之改变，用来判断旧缓存是否还可信。
+     * @param {{bits: Uint8Array}[]} refs
+     * @returns {string}
+     */
+    function refsSignature(refs) {
+        let h = 0x811c9dc5;
+        for (const r of refs) {
+            for (let i = 0; i < r.bits.length; i++) {
+                h ^= r.bits[i] ? 1 : 0;
+                h = (h * 0x01000193) >>> 0;
+            }
+        }
+        return refs.length + ':' + h.toString(16);
+    }
+
+    /**
      * 用单一字体做一轮校准：每个 PUA 字符与 0-9 参考位图比对，
      * IoU 最高且与次高拉开差距的才采信（避免 1/7、3/8 形近误判），
      * 并施加单射约束（同一数字只保留 IoU 最高的字符）
      * @param {string[]} puaChars
      * @param {string} font
-     * @returns {Record<string, string>} 仅含可信映射的子集
+     * @returns {{ map: Record<string, string>, sig: string }} map 仅含可信映射的子集；sig 为字体指纹
      */
     function calibrateWithFont(puaChars, font) {
         const refs = [];
         for (let d = 0; d <= 9; d++) {
             const bm = renderGlyphBitmap(String(d), font);
-            if (!bm) return {};
+            if (!bm) return { map: {}, sig: '' };
             refs.push(bm);
         }
+        const sig = refsSignature(refs);
         /** @type {Record<string, { digit: string, iou: number }>} */
         const scored = {};
         for (const ch of puaChars) {
@@ -133,36 +163,41 @@ async (action, ...args) => {
             if (prev === undefined) { usedBy[s.digit] = ch; map[ch] = s.digit; }
             else if (s.iou > scored[prev].iou) { delete map[prev]; usedBy[s.digit] = ch; map[ch] = s.digit; }
         }
-        return map;
+        return { map, sig };
     }
 
     /**
      * 获取（或构建并缓存）PUA→数字 映射表；依次尝试薪资元素字体、系统字体。
-     * 只有覆盖全部 PUA 字符的完整映射才返回，否则返回 null 走静态兜底
+     * 只有覆盖本次全部 PUA 字符的完整映射才会被采用，否则返回 null（调用方原样输出字符）。
+     * 每轮都按当前字体重算指纹：指纹一致说明缓存仍可信，增量合并（避免本页未出现字符的映射被冲掉）；
+     * 指纹变化说明字体已轮换，旧映射作废，整体重建。
      * @param {string[]} puaChars
      * @param {Element | null} styleEl 提供字体的元素（第一个薪资元素）
      * @returns {Record<string, string> | null}
      */
     function getDigitMap(puaChars, styleEl) {
         /** @type {any} */ const w = window;
-        if (w.__bossDigitMap && puaChars.every(ch => w.__bossDigitMap[ch] !== undefined)) {
-            return w.__bossDigitMap;
-        }
+        const cached = w.__bossDigitMap;
         const fontFamily = styleEl ? getComputedStyle(styleEl).fontFamily : '';
         const candidates = fontFamily ? ['64px ' + fontFamily, '64px sans-serif'] : ['64px sans-serif'];
         for (const font of candidates) {
-            const map = calibrateWithFont(puaChars, font);
-            if (puaChars.length > 0 && puaChars.every(ch => map[ch] !== undefined)) {
-                w.__bossDigitMap = map;
-                return map;
+            const { map, sig } = calibrateWithFont(puaChars, font);
+            if (puaChars.length === 0 || !puaChars.every(ch => map[ch] !== undefined)) continue;
+            if (cached && w.__bossDigitMapSig === sig) {
+                Object.assign(cached, map);
+                return cached;
             }
+            w.__bossDigitMap = map;
+            w.__bossDigitMapSig = sig;
+            return map;
         }
         return null;
     }
 
     /**
      * 将 BOSS 混淆字体的薪资文本还原为真实数字：
-     * 优先用 canvas 自校准映射；校准失败退回静态表；静态表覆盖不到的 PUA 保留原字符
+     * 只用 canvas 自校准映射；没有映射的 PUA 字符原样保留
+     * （不做静态表兜底，避免字体轮换后静默输出错误数字）
      * @param {string} str 原始文本
      * @param {Record<string, string> | null} digitMap 自校准映射表
      * @returns {string}
@@ -173,9 +208,6 @@ async (action, ...args) => {
             const code = char.codePointAt(0) || 0;
             if (code >= 0xE000 && code <= 0xF8FF) {
                 if (digitMap && digitMap[char] !== undefined) return digitMap[char];
-                if (code >= STATIC_DIGIT_BASE && code <= STATIC_DIGIT_BASE + 9) {
-                    return String(code - STATIC_DIGIT_BASE);
-                }
                 return char;
             }
             return char;
