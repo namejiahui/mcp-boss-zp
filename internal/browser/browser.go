@@ -47,7 +47,9 @@ func (bm *BrowserManager) EnsureBrowser() (*rod.Browser, error) {
 		if err != nil {
 			return nil, fmt.Errorf("解析 CDP 调试地址失败 (%s): %w", bm.cfg.CDPURL, err)
 		}
-		b := rod.New().ControlURL(u)
+		// NoDefaultDevice：attach 场景危害最大——rod 默认会把每个可枚举标签页锁到
+		// 1280x800 视口并注入 macOS UA（UA 覆盖不会被 SetViewport 清除），用户正在用的浏览器会被改坏
+		b := rod.New().ControlURL(u).NoDefaultDevice()
 		if err := b.Connect(); err != nil {
 			return nil, fmt.Errorf("连接现有 Chrome 失败 (%s): %w", bm.cfg.CDPURL, err)
 		}
@@ -83,7 +85,10 @@ func (bm *BrowserManager) EnsureBrowser() (*rod.Browser, error) {
 		return nil, fmt.Errorf("启动 Chrome 失败 (请确认本机已安装 Chrome/Edge): %w", err)
 	}
 
-	b := rod.New().ControlURL(u)
+	// NoDefaultDevice：rod 默认会给每个创建/附着的页面应用 LaptopWithMDPIScreen 设备仿真，
+	// 其中 setUserAgentOverride（macOS UA + Accept-Language "en"）不会被下方 SetViewport 清除，
+	// Windows 启动的浏览器报 Mac UA 是风控可交叉校验的指纹矛盾，禁用后页面保留真实 UA/视口
+	b := rod.New().ControlURL(u).NoDefaultDevice()
 	if err := b.Connect(); err != nil {
 		return nil, fmt.Errorf("连接浏览器失败: %w", err)
 	}
