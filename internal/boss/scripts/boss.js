@@ -11,16 +11,204 @@ async (action, ...args) => {
     const CHAT_BTN_SELECTORS = '.op-btn-chat, .btn-startchat, [class*="startchat"], a.btn';
 
     /**
-     * 将 BOSS 直聘混淆字体的私有 Unicode 字符 (\ue030 - \ue039) 还原为真实数字 0-9
-     * @param {string} str 包含混淆字体的原始文本
-     * @returns {string} 还原后的标准明文字符串
+     * BOSS 直聘用自定义 @font-face 混淆薪资数字：文本层是私有区（PUA）字符，
+     * 渲染层由字体把 PUA 码点画成数字字形，且映射表会不定期轮换
+     * （静态假设 \ue030-\ue039 → 0-9 已实测整体偏移失效，故不再保留静态表）。
+     * 因此改为运行时自校准：用 canvas 把 PUA 字符与参考数字 0-9 按同一字体
+     * 渲染成位图，按像素 IoU 匹配出映射表，并在 window 上缓存供本页面复用。
+     * 校准失败时 PUA 字符原样返回，宁可暴露问题也不静默输出错误数字。
      */
-    function decodeBossSalary(str) {
+    /** @type {HTMLCanvasElement | null} */
+    let glyphCanvas = null;
+    /** @type {CanvasRenderingContext2D | null} */
+    let glyphCtx = null;
+
+    /**
+     * 收集字符串中出现的全部 PUA（私有区）字符
+     * @param {string} str
+     * @returns {string[]}
+     */
+    function collectPuaChars(str) {
+        return Array.from(str).filter(ch => {
+            const code = ch.codePointAt(0) || 0;
+            return code >= 0xE000 && code <= 0xF8FF;
+        });
+    }
+
+    /**
+     * 用指定 font 把字符渲染为归一化（等比缩放、居中至 32x40）的二值位图
+     * @param {string} char
+     * @param {string} font 合法 canvas font 值（含字号，如 "64px xxx"）
+     * @returns {{ bits: Uint8Array } | null} 字体不含该字符时返回 null
+     */
+    function renderGlyphBitmap(char, font) {
+        // 校准循环里会逐字形调用，这里复用同一个离屏 canvas，
+        // 避免每次新建 DOM 节点与 96x96 后备缓冲区
+        if (!glyphCanvas) {
+            glyphCanvas = document.createElement('canvas');
+            glyphCanvas.width = 96;
+            glyphCanvas.height = 96;
+            glyphCtx = glyphCanvas.getContext('2d');
+        }
+        const canvas = glyphCanvas;
+        const ctx = glyphCtx;
+        if (!ctx) return null;
+        // 必须清空：残影会进入下面的 bbox 统计，把裁剪边界算错
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = font;
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#000';
+        ctx.fillText(char, 16, 72);
+
+        const W = canvas.width, H = canvas.height;
+        const img = ctx.getImageData(0, 0, W, H).data;
+        let minX = W, minY = H, maxX = -1, maxY = -1;
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                if (img[(y * W + x) * 4 + 3] > 64) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (maxX < 0) return null;
+
+        const cols = 32, rows = 40;
+        const scale = Math.min(cols / (maxX - minX + 1), rows / (maxY - minY + 1));
+        const tw = Math.max(1, Math.round((maxX - minX + 1) * scale));
+        const th = Math.max(1, Math.round((maxY - minY + 1) * scale));
+        const offX = Math.floor((cols - tw) / 2);
+        const offY = Math.floor((rows - th) / 2);
+
+        const bits = new Uint8Array(cols * rows);
+        for (let y = 0; y < th; y++) {
+            const sy = Math.min(H - 1, minY + Math.round((y + 0.5) / scale - 0.5));
+            for (let x = 0; x < tw; x++) {
+                const sx = Math.min(W - 1, minX + Math.round((x + 0.5) / scale - 0.5));
+                if (img[(sy * W + sx) * 4 + 3] > 64) bits[(y + offY) * cols + x + offX] = 1;
+            }
+        }
+        return { bits };
+    }
+
+    /**
+     * 两个位图的 IoU（交并比）
+     * @param {{bits: Uint8Array}} a
+     * @param {{bits: Uint8Array}} b
+     * @returns {number}
+     */
+    function bitmapIou(a, b) {
+        let inter = 0, union = 0;
+        for (let i = 0; i < a.bits.length; i++) {
+            const x = a.bits[i], y = b.bits[i];
+            if (x || y) union++;
+            if (x && y) inter++;
+        }
+        return union === 0 ? 0 : inter / union;
+    }
+
+    /**
+     * 参考数字 0-9 位图的指纹（FNV-1a 变体）。
+     * 字形随字体轮换而变化，指纹也随之改变，用来判断旧缓存是否还可信。
+     * @param {{bits: Uint8Array}[]} refs
+     * @returns {string}
+     */
+    function refsSignature(refs) {
+        let h = 0x811c9dc5;
+        for (const r of refs) {
+            for (let i = 0; i < r.bits.length; i++) {
+                h ^= r.bits[i] ? 1 : 0;
+                h = (h * 0x01000193) >>> 0;
+            }
+        }
+        return refs.length + ':' + h.toString(16);
+    }
+
+    /**
+     * 用单一字体做一轮校准：每个 PUA 字符与 0-9 参考位图比对，
+     * IoU 最高且与次高拉开差距的才采信（避免 1/7、3/8 形近误判），
+     * 并施加单射约束（同一数字只保留 IoU 最高的字符）
+     * @param {string[]} puaChars
+     * @param {string} font
+     * @returns {{ map: Record<string, string>, sig: string }} map 仅含可信映射的子集；sig 为字体指纹
+     */
+    function calibrateWithFont(puaChars, font) {
+        const refs = [];
+        for (let d = 0; d <= 9; d++) {
+            const bm = renderGlyphBitmap(String(d), font);
+            if (!bm) return { map: {}, sig: '' };
+            refs.push(bm);
+        }
+        const sig = refsSignature(refs);
+        /** @type {Record<string, { digit: string, iou: number }>} */
+        const scored = {};
+        for (const ch of puaChars) {
+            const bm = renderGlyphBitmap(ch, font);
+            if (!bm) continue;
+            let best = -1, second = -1, bestD = -1;
+            for (let d = 0; d <= 9; d++) {
+                const iou = bitmapIou(bm, refs[d]);
+                if (iou > best) { second = best; best = iou; bestD = d; }
+                else if (iou > second) { second = iou; }
+            }
+            if (best >= 0.55 && best - second >= 0.08) scored[ch] = { digit: String(bestD), iou: best };
+        }
+        const map = {};
+        const usedBy = {};
+        for (const ch of Object.keys(scored)) {
+            const s = scored[ch];
+            const prev = usedBy[s.digit];
+            if (prev === undefined) { usedBy[s.digit] = ch; map[ch] = s.digit; }
+            else if (s.iou > scored[prev].iou) { delete map[prev]; usedBy[s.digit] = ch; map[ch] = s.digit; }
+        }
+        return { map, sig };
+    }
+
+    /**
+     * 获取（或构建并缓存）PUA→数字 映射表；依次尝试薪资元素字体、系统字体。
+     * 只有覆盖本次全部 PUA 字符的完整映射才会被采用，否则返回 null（调用方原样输出字符）。
+     * 每轮都按当前字体重算指纹：指纹一致说明缓存仍可信，增量合并（避免本页未出现字符的映射被冲掉）；
+     * 指纹变化说明字体已轮换，旧映射作废，整体重建。
+     * @param {string[]} puaChars
+     * @param {Element | null} styleEl 提供字体的元素（第一个薪资元素）
+     * @returns {Record<string, string> | null}
+     */
+    function getDigitMap(puaChars, styleEl) {
+        /** @type {any} */ const w = window;
+        const cached = w.__bossDigitMap;
+        const fontFamily = styleEl ? getComputedStyle(styleEl).fontFamily : '';
+        const candidates = fontFamily ? ['64px ' + fontFamily, '64px sans-serif'] : ['64px sans-serif'];
+        for (const font of candidates) {
+            const { map, sig } = calibrateWithFont(puaChars, font);
+            if (puaChars.length === 0 || !puaChars.every(ch => map[ch] !== undefined)) continue;
+            if (cached && w.__bossDigitMapSig === sig) {
+                Object.assign(cached, map);
+                return cached;
+            }
+            w.__bossDigitMap = map;
+            w.__bossDigitMapSig = sig;
+            return map;
+        }
+        return null;
+    }
+
+    /**
+     * 将 BOSS 混淆字体的薪资文本还原为真实数字：
+     * 只用 canvas 自校准映射；没有映射的 PUA 字符原样保留
+     * （不做静态表兜底，避免字体轮换后静默输出错误数字）
+     * @param {string} str 原始文本
+     * @param {Record<string, string> | null} digitMap 自校准映射表
+     * @returns {string}
+     */
+    function decodeBossSalary(str, digitMap) {
         if (!str) return '';
         return Array.from(str).map(char => {
-            const code = char.charCodeAt(0);
-            if (code >= 0xE030 && code <= 0xE039) {
-                return String(code - 0xE030);
+            const code = char.codePointAt(0) || 0;
+            if (code >= 0xE000 && code <= 0xF8FF) {
+                if (digitMap && digitMap[char] !== undefined) return digitMap[char];
+                return char;
             }
             return char;
         }).join('');
@@ -60,6 +248,17 @@ async (action, ...args) => {
         case 'getJobs': {
             const cards = await waitForAll(CARD_SELECTORS);
 
+            // 混淆字体自校准：收集本页薪资文本中的全部 PUA 字符，构建 PUA→数字 映射表
+            const salaryEls = cards
+                .map(card => card.querySelector('.job-salary, .salary'))
+                .filter(Boolean);
+            const puaChars = [...new Set(
+                salaryEls.flatMap(el => collectPuaChars((el.textContent || '').trim()))
+            )];
+            const digitMap = puaChars.length > 0
+                ? getDigitMap(puaChars, salaryEls[0] || null)
+                : null;
+
             /** @type {import('./types').VisibleJob[]} */
             const result = [];
 
@@ -82,7 +281,7 @@ async (action, ...args) => {
                 const alreadyChatted = btnText.includes('继续') || btnText.includes('已沟通') || btnText.includes('聊过');
 
                 const rawSalary = salaryEl ? (salaryEl.textContent || '').trim() : '薪资面议';
-                const cleanSalary = decodeBossSalary(rawSalary);
+                const cleanSalary = decodeBossSalary(rawSalary, digitMap);
                 const cleanJobName = nameEl ? (nameEl.textContent || '').trim() : '未知职位';
                 const cleanCompanyName = companyEl ? (companyEl.textContent || '').trim() : '未知公司';
 
